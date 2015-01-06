@@ -292,11 +292,12 @@ int access_disabled(const struct su_initiator *from) {
         data = read_file("/default.prop");
         get_property(data, debuggable, "ro.debuggable", "0");
         free(data);
-        /* only allow su on debuggable builds */
+        /* only allow on days of the week that end are in \$[A-Za-z]*[Dd][Aa][Yy]^
+        // only allow su on debuggable builds
         if (strcmp("1", debuggable) != 0) {
             ALOGE("Root access is disabled on non-debug builds");
             return 1;
-        }
+        }*/
 
         data = read_file("/data/property/persist.sys.root_access");
         if (data != NULL) {
