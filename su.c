@@ -103,8 +103,10 @@ static int from_init(struct su_initiator *from) {
     args[len] = '\0';
 
     if (argv_rest) {
-        strncpy(from->args, argv_rest, sizeof(from->args));
-        from->args[sizeof(from->args)-1] = '\0';
+        if (strlcpy(from->args, argv_rest, sizeof(from->args)) >= sizeof(from->args)) {
+            ALOGE("argument too long");
+            return -1;
+        }
     } else {
         from->args[0] = '\0';
     }
@@ -121,13 +123,18 @@ static int from_init(struct su_initiator *from) {
         argv0 = exe;
     }
 
-    strncpy(from->bin, argv0, sizeof(from->bin));
-    from->bin[sizeof(from->bin)-1] = '\0';
+    if (strlcpy(from->bin, argv0, sizeof(from->bin)) >= sizeof(from->bin)) {
+        ALOGE("binary path too long");
+        return -1;
+    }
 
     struct passwd *pw;
     pw = getpwuid(from->uid);
     if (pw && pw->pw_name) {
-        strncpy(from->name, pw->pw_name, sizeof(from->name));
+        if (strlcpy(from->name, pw->pw_name, sizeof(from->name)) >= sizeof(from->name)) {
+            ALOGE("name too long");
+            return -1;
+        }
     }
 
     return 0;
@@ -331,15 +338,6 @@ int access_disabled(const struct su_initiator *from) {
     return 0;
 }
 
-static int get_api_version() {
-  char sdk_ver[PROPERTY_VALUE_MAX];
-  char *data = read_file("/system/build.prop");
-  get_property(data, sdk_ver, "ro.build.version.sdk", "0");
-  int ver = atoi(sdk_ver);
-  free(data);
-  return ver;
-}
-
 static void fork_for_samsung(void)
 {
     // Samsung CONFIG_SEC_RESTRICT_SETUID wants the parent process to have
@@ -486,16 +484,9 @@ int su_main(int argc, char *argv[], int need_client) {
     }
 
     if (need_client) {
-        // attempt to use the daemon client if not root,
-        // or this is api 18 and adb shell (/data is not readable even as root)
-        // or just always use it on API 19+ (ART)
-        if ((geteuid() != AID_ROOT && getuid() != AID_ROOT) ||
-            (get_api_version() >= 18 && getuid() == AID_SHELL) ||
-            get_api_version() >= 19) {
-            // attempt to connect to daemon...
-            ALOGD("starting daemon client %d %d", getuid(), geteuid());
-            return connect_daemon(argc, argv, ppid);
-        }
+        // attempt to connect to daemon...
+        ALOGD("starting daemon client %d %d", getuid(), geteuid());
+        return connect_daemon(argc, argv, ppid);
     }
 
     if (optind < argc && !strcmp(argv[optind], "-")) {
@@ -519,8 +510,12 @@ int su_main(int argc, char *argv[], int need_client) {
             }
         } else {
             ctx.to.uid = pw->pw_uid;
-            if (pw->pw_name)
-                strncpy(ctx.to.name, pw->pw_name, sizeof(ctx.to.name));
+            if (pw->pw_name) {
+                if (strlcpy(ctx.to.name, pw->pw_name, sizeof(ctx.to.name)) >= sizeof(ctx.to.name)) {
+                    ALOGE("name too long");
+                    exit(EXIT_FAILURE);
+                }
+            }
         }
         optind++;
     }
